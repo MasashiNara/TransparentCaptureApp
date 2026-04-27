@@ -4,11 +4,14 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Threading;
 using TransparentCaptureApp.Models;
 using TransparentCaptureApp.Services;
 using TransparentCaptureApp.Services.Llm;
 using TransparentCaptureApp.Utilities;
+using AppCaptureMode = TransparentCaptureApp.Models.CaptureMode;
 
 namespace TransparentCaptureApp;
 
@@ -26,6 +29,8 @@ public partial class MainWindow : Window
     private AppSettings _settings;
     private LogService _logService;
     private bool _isCapturing;
+    private bool _suppressNextCaptureClick;
+    private readonly DispatcherTimer _captureLongPressTimer;
 
     public MainWindow()
     {
@@ -33,6 +38,12 @@ public partial class MainWindow : Window
         _settings = _settingsService.Load();
         _logService = new LogService(_settings.LogFilePath);
         _logService.Info("Application started.");
+
+        _captureLongPressTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(600)
+        };
+        _captureLongPressTimer.Tick += CaptureLongPressTimer_Tick;
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -62,12 +73,81 @@ public partial class MainWindow : Window
 
     private async void CaptureButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_suppressNextCaptureClick)
+        {
+            _suppressNextCaptureClick = false;
+            return;
+        }
+
         if (_isCapturing)
         {
             return;
         }
 
-        await CaptureAndTranscribeAsync();
+        await CaptureAndTranscribeAsync(AppCaptureMode.Transcription);
+    }
+
+    private void CaptureButton_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_isCapturing)
+        {
+            return;
+        }
+
+        _suppressNextCaptureClick = false;
+        _captureLongPressTimer.Stop();
+        _captureLongPressTimer.Start();
+    }
+
+    private void CaptureButton_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _captureLongPressTimer.Stop();
+    }
+
+    private void CaptureLongPressTimer_Tick(object? sender, EventArgs e)
+    {
+        _captureLongPressTimer.Stop();
+        if (_isCapturing)
+        {
+            return;
+        }
+
+        _suppressNextCaptureClick = true;
+        CaptureContextMenu.PlacementTarget = CaptureButton;
+        CaptureContextMenu.Placement = PlacementMode.Bottom;
+        CaptureContextMenu.IsOpen = true;
+    }
+
+    private async void CaptureTranscriptionMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await StartCaptureFromMenuAsync(AppCaptureMode.Transcription);
+    }
+
+    private async void CaptureTranslateMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await StartCaptureFromMenuAsync(AppCaptureMode.TranslateToJapanese);
+    }
+
+    private async void CaptureTermsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await StartCaptureFromMenuAsync(AppCaptureMode.ExplainTerms);
+    }
+
+    private async void CaptureImageExplanationMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await StartCaptureFromMenuAsync(AppCaptureMode.ExplainImage);
+    }
+
+    private async Task StartCaptureFromMenuAsync(AppCaptureMode mode)
+    {
+        _captureLongPressTimer.Stop();
+        _suppressNextCaptureClick = false;
+        if (_isCapturing)
+        {
+            return;
+        }
+
+        await CaptureAndTranscribeAsync(mode);
     }
 
     private void LogButton_Click(object sender, RoutedEventArgs e)
@@ -107,12 +187,13 @@ public partial class MainWindow : Window
         Close();
     }
 
-    private async Task CaptureAndTranscribeAsync()
+    private async Task CaptureAndTranscribeAsync(AppCaptureMode mode)
     {
         _isCapturing = true;
         CaptureButton.IsEnabled = false;
         SettingsButton.IsEnabled = false;
-        StatusTextBlock.Text = "キャプチャ中...";
+        var modeName = CapturePromptService.GetDisplayName(mode);
+        StatusTextBlock.Text = $"{modeName}: キャプチャ中...";
 
         string? imagePath = null;
         try
@@ -120,7 +201,7 @@ public partial class MainWindow : Window
             _settings = _settingsService.Load();
             _logService.SetLogFilePath(_settings.LogFilePath);
             _fileService.EnsureDirectory(_settings.SaveDirectory);
-            _logService.Info("Capture started.");
+            _logService.Info($"Capture started. Mode: {mode}");
 
             var rect = WindowCoordinateUtility.ToDeviceRect(this, CaptureArea);
             imagePath = _fileService.CreateUniquePath(_settings.SaveDirectory, "capture", ".png", DateTime.Now);
@@ -133,11 +214,12 @@ public partial class MainWindow : Window
 
             _logService.Info($"Capture image saved: {captureResult.ImagePath} ({captureResult.X},{captureResult.Y},{captureResult.Width},{captureResult.Height})");
 
-            StatusTextBlock.Text = "文字起こし中...";
+            StatusTextBlock.Text = $"{modeName}: 処理中...";
             using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(180));
             var factory = new LlmClientFactory(_secretService, _httpClient);
             var client = factory.Create(_settings);
-            var result = await client.TranscribeImageAsync(imagePath, _settings.TranscriptionPrompt, cancellationTokenSource.Token);
+            var prompt = CapturePromptService.BuildPrompt(_settings, mode);
+            var result = await client.TranscribeImageAsync(imagePath, prompt, cancellationTokenSource.Token);
 
             if (!result.IsSuccess)
             {
@@ -151,7 +233,8 @@ public partial class MainWindow : Window
 
             if (_settings.SaveTranscriptText)
             {
-                var transcriptPath = _fileService.CreateUniquePath(_settings.SaveDirectory, "transcript", ".txt", DateTime.Now);
+                var prefix = CapturePromptService.GetFilePrefix(mode);
+                var transcriptPath = _fileService.CreateUniquePath(_settings.SaveDirectory, prefix, ".txt", DateTime.Now);
                 _fileService.SaveText(transcriptPath, result.Text);
                 _logService.Info($"Transcript saved: {transcriptPath}");
 

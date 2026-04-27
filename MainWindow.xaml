@@ -33,7 +33,18 @@
                             Content="キャプチャ"
                             Width="88"
                             Margin="6,5,0,5"
-                            Click="CaptureButton_Click" />
+                            PreviewMouseLeftButtonDown="CaptureButton_PreviewMouseLeftButtonDown"
+                            PreviewMouseLeftButtonUp="CaptureButton_PreviewMouseLeftButtonUp"
+                            Click="CaptureButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="CaptureContextMenu">
+                                <MenuItem Header="文字起し" Click="CaptureTranscriptionMenuItem_Click" />
+                                <MenuItem Header="日本語に翻訳" Click="CaptureTranslateMenuItem_Click" />
+                                <MenuItem Header="語句の解説" Click="CaptureTermsMenuItem_Click" />
+                                <MenuItem Header="画像の解説" Click="CaptureImageExplanationMenuItem_Click" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button x:Name="LogButton"
                             Content="ログ"
                             Width="88"

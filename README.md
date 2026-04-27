@@ -2,6 +2,26 @@
 
 Windows 11 用の透明オーバーレイ型キャプチャ文字起こしアプリです。
 
+## キャプチャモード
+
+`キャプチャ` ボタンを通常クリックすると、従来どおり文字起こしを実行します。
+
+`キャプチャ` ボタンを長押しすると、以下のメニューを表示します。
+
+- 文字起し
+- 日本語に翻訳
+- 語句の解説
+- 画像の解説
+
+各モードの結果は、以下のファイル名で保存されます。
+
+```text
+transcript_yyyyMMdd_HHmmss.txt
+translate_yyyyMMdd_HHmmss.txt
+terms_yyyyMMdd_HHmmss.txt
+image_explanation_yyyyMMdd_HHmmss.txt
+```
+
 ## 開発環境
 
 - Windows 11

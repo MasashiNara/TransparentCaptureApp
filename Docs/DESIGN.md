@@ -97,9 +97,18 @@ TransparentCaptureApp
 | ボタン | 処理 |
 | --- | --- |
 | 設定 | 設定画面を開く |
-| キャプチャ | 透明領域をキャプチャし、文字起こしを実行する |
+| キャプチャ | 通常クリックで文字起こしを実行する。長押しで処理モードメニューを表示する |
 | ログ | ログファイルを既定アプリで開く |
 | 保存先を開く | 保存先フォルダを Explorer で開く |
+
+キャプチャボタン長押し時のメニュー:
+
+| メニュー | 処理 |
+| --- | --- |
+| 文字起し | 画像内の文字を文字起こしする |
+| 日本語に翻訳 | 文字起こし後、日本語訳を追記する |
+| 語句の解説 | 文字起こし後、漢字の読み方と難しい単語の説明を追記する |
+| 画像の解説 | 文字起こし後、文字以外の画像内容を解説する |
 
 #### 3.1.3 キャプチャ中の UI
 
@@ -222,7 +231,19 @@ public enum LlmProviderType
 }
 ```
 
-### 4.4 秘密情報
+### 4.4 CaptureMode
+
+```csharp
+public enum CaptureMode
+{
+    Transcription,
+    TranslateToJapanese,
+    ExplainTerms,
+    ExplainImage
+}
+```
+
+### 4.5 秘密情報
 
 以下は `SecretService` で保存する。
 
@@ -251,6 +272,15 @@ capture_yyyyMMdd_HHmmss.png
 
 ```text
 transcript_yyyyMMdd_HHmmss.txt
+```
+
+モード別テキスト:
+
+```text
+transcript_yyyyMMdd_HHmmss.txt
+translate_yyyyMMdd_HHmmss.txt
+terms_yyyyMMdd_HHmmss.txt
+image_explanation_yyyyMMdd_HHmmss.txt
 ```
 
 同一秒に複数回実行された場合は連番を付ける。
@@ -427,7 +457,7 @@ GET /props
 ## 8. キャプチャ実行フロー
 
 ```text
-ユーザーが「キャプチャ」を押す
+ユーザーが「キャプチャ」を通常クリックする、または長押しメニューからモードを選択する
   ↓
 設定を読み込む
   ↓
@@ -438,6 +468,8 @@ GET /props
 スクリーンショットを PNG 保存
   ↓
 選択中プロバイダの LLM クライアントを生成
+  ↓
+選択モードに応じたプロンプトを生成
   ↓
 画像とプロンプトを送信
   ↓
@@ -451,6 +483,10 @@ TXT 保存
   ↓
 ログ出力
 ```
+
+通常クリック時は `CaptureMode.Transcription` として処理する。
+
+長押し判定は 600 ms とし、長押し成立時に `ContextMenu` をボタン下に表示する。
 
 エラー発生時は以下を行う。
 
